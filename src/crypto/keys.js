@@ -1,7 +1,6 @@
-import argon2 from "argon2-browser";
+import { argon2id } from "hash-wasm";
 
 const encoder = new TextEncoder();
-const KDF = Object.freeze({ time: 3, mem: 65536, parallelism: 1, hashLen: 32, type: argon2.ArgonType.Argon2id });
 
 export function randomBytes(length) {
   return crypto.getRandomValues(new Uint8Array(length));
@@ -16,9 +15,27 @@ export function fromBase64(value) {
   return Uint8Array.from(binary, c => c.charCodeAt(0));
 }
 export async function deriveKek(passphrase, salt) {
-  if (typeof passphrase !== "string" || passphrase.length < 14) throw new Error("Master passphrase must contain at least 14 characters.");
-  const result = await argon2.hash({ pass: passphrase, salt, ...KDF });
-  return crypto.subtle.importKey("raw", result.hash, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+  if (typeof passphrase !== "string" || passphrase.length < 14) {
+    throw new Error("Master passphrase must contain at least 14 characters.");
+  }
+
+  const rawKey = await argon2id({
+    password: passphrase,
+    salt,
+    parallelism: 1,
+    iterations: 3,
+    memorySize: 65536,
+    hashLength: 32,
+    outputType: "binary"
+  });
+
+  return crypto.subtle.importKey(
+    "raw",
+    rawKey,
+    { name: "AES-GCM" },
+    false,
+    ["encrypt", "decrypt"]
+  );
 }
 export async function importDek(raw) {
   return crypto.subtle.importKey("raw", raw, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
