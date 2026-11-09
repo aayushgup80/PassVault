@@ -29,13 +29,17 @@ export async function deriveKek(passphrase, salt) {
     outputType: "binary"
   });
 
-  return crypto.subtle.importKey(
-    "raw",
-    rawKey,
-    { name: "AES-GCM" },
-    false,
-    ["encrypt", "decrypt"]
-  );
+  try {
+    return await crypto.subtle.importKey(
+      "raw",
+      rawKey,
+      { name: "AES-GCM" },
+      false,
+      ["encrypt", "decrypt"]
+    );
+  } finally {
+    rawKey.fill(0);
+  }
 }
 export async function importDek(raw) {
   return crypto.subtle.importKey("raw", raw, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
