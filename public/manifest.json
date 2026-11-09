@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "PassVault",
+  "version": "0.1.0",
+  "description": "A local-first encrypted password vault.",
+  "action": {
+    "default_title": "PassVault",
+    "default_popup": "index.html"
+  },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [],
+  "content_scripts": []
+}
