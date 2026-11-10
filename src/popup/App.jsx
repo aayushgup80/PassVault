@@ -17,6 +17,7 @@ export default function App() {
   const [username, setUsername] = useState("");
   const [secret, setSecret] = useState("");
   const [visibleIds, setVisibleIds] = useState([]);
+  const [detected, setDetected] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -25,6 +26,40 @@ export default function App() {
       .catch(() => { if (active) setView("setup"); });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    const ext = globalThis.chrome;
+    if (!ext?.storage?.session || !ext?.tabs) return;
+    let activeTabId;
+    const onStorageChange = (changes, area) => {
+      if (area !== "session" || !changes.lastPasswordFieldDetection) return;
+      const item = changes.lastPasswordFieldDetection.newValue;
+      setDetected(item && item.tabId === activeTabId ? item : null);
+    };
+    ext.storage.onChanged.addListener(onStorageChange);
+    ext.tabs.query({ active: true, currentWindow: true }, tabs => {
+      activeTabId = tabs[0]?.id;
+      ext.storage.session.get("lastPasswordFieldDetection", result => {
+        const item = result.lastPasswordFieldDetection;
+        setDetected(item && item.tabId === activeTabId ? item : null);
+      });
+    });
+    return () => ext.storage.onChanged.removeListener(onStorageChange);
+  }, []);
+
+  function generatePassword() {
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*_-+=";
+    const limit = Math.floor(256 / alphabet.length) * alphabet.length;
+    let result = "";
+    while (result.length < 22) {
+      const bytes = crypto.getRandomValues(new Uint8Array(32));
+      for (const byte of bytes) {
+        if (byte < limit) result += alphabet[byte % alphabet.length];
+        if (result.length === 22) break;
+      }
+    }
+    setSecret(result);
+  }
 
   async function refreshCredentials() {
     const rows = await listCredentialRecords();
@@ -114,14 +149,15 @@ export default function App() {
     <header className="brand"><div className="logo"><ShieldCheck /></div><div><h1>PassVault</h1><p>Your passwords. Your device.</p></div><button className="ghost" title="Lock vault" onClick={lockVault}><LockKeyhole size={15}/> Lock</button></header>
     <section className="welcome"><div><p className="eyebrow">YOUR SECURITY SPACE</p><h2>Vault unlocked.</h2><p className="muted">Your credentials are encrypted at rest.</p></div><div className="status"><span/> LOCAL</div></section>
     <section className="stats"><div className="panel stat"><KeyRound/><strong>{credentials.length}</strong><span>Saved accounts</span></div><div className="panel stat"><ShieldCheck/><strong>On-device</strong><span>Encryption</span></div></section>
+    {detected && <section className="panel detector-notice"><div className="detector-mark"><Fingerprint size={18}/></div><div><strong>Password field detected</strong><p>{detected.origin} · {detected.count} field{detected.count === 1 ? "" : "s"}</p><small>PassVault detected the field type only. It did not read its value.</small></div></section>}
     <section className="panel feature"><div className="feature-icon"><Sparkles/></div><div><h3>PassVault AI</h3><p className="muted">AI security guidance is not connected yet. Your passwords are never sent to AI.</p></div><span className="coming-soon">SOON</span></section>
     <section className="panel credentials">
-      <div className="section-heading"><div><p className="eyebrow">YOUR COLLECTION</p><h3>Saved accounts</h3></div><button className="primary add-button" onClick={()=>{setMessage("");setShowForm(!showForm);}}>{showForm ? <X size={16}/> : <Plus size={16}/>} {showForm ? "Cancel" : "Add account"}</button></div>
+      <div className="section-heading"><div><p className="eyebrow">YOUR COLLECTION</p><h3>Saved accounts</h3></div><button className="primary add-button" onClick={()=>{setMessage("");if(!showForm && detected)setSite(detected.origin);setShowForm(!showForm);}}>{showForm ? <X size={16}/> : <Plus size={16}/>} {showForm ? "Cancel" : "Add account"}</button></div>
       {message && <p className="notice" role="status">{message}</p>}
       {showForm && <form className="credential-form" onSubmit={saveCredential}>
         <label htmlFor="site">Website or account name</label><input id="site" value={site} onChange={e=>setSite(e.target.value)} placeholder="e.g. GitHub" required />
         <label htmlFor="username">Username or email</label><input id="username" value={username} onChange={e=>setUsername(e.target.value)} placeholder="you@example.com" />
-        <label htmlFor="saved-password">Password</label><input id="saved-password" type="password" value={secret} onChange={e=>setSecret(e.target.value)} placeholder="Enter password" required />
+        <div className="field-label-row"><label htmlFor="saved-password">Password</label><button type="button" className="generate-button" onClick={generatePassword}><Sparkles size={13}/> Generate strong password</button></div><input id="saved-password" name="password" type="password" autoComplete="new-password" value={secret} onChange={e=>setSecret(e.target.value)} placeholder="Enter password" required />
         <button className="primary" type="submit">Encrypt and save</button>
       </form>}
       {credentials.length === 0 && !showForm ? <div className="empty"><div className="icon-orb"><KeyRound/></div><h3>Your vault is ready</h3><p className="muted">Add an account to store its credentials encrypted on this device.</p><button className="primary" onClick={()=>setShowForm(true)}><Plus size={17}/> Add your first password</button></div> : <div className="credential-list">{credentials.map(item => <article className="credential-row" key={item.id}><div className="credential-avatar"><KeyRound size={18}/></div><div className="credential-info"><strong>{item.site}</strong><span>{item.username || "No username"}</span>{visibleIds.includes(item.id) && <code className="revealed-password">{item.password}</code>}</div><div className="credential-actions"><button className="icon-button" title={visibleIds.includes(item.id) ? "Hide password" : "Show password"} onClick={()=>setVisibleIds(ids=>ids.includes(item.id)?ids.filter(x=>x!==item.id):[...ids,item.id])}>{visibleIds.includes(item.id)?<EyeOff size={16}/>:<Eye size={16}/>}</button><button className="icon-button" title="Copy password" onClick={()=>copyPassword(item.password)}><Copy size={16}/></button><button className="icon-button danger" title="Delete account" onClick={()=>removeCredential(item.id)}><Trash2 size={16}/></button></div></article>)}</div>}

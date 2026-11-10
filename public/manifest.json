@@ -1,14 +1,20 @@
 {
   "manifest_version": 3,
   "name": "PassVault",
-  "version": "0.1.0",
-  "description": "A local-first encrypted password vault.",
+  "version": "0.2.0",
+  "description": "A local-first encrypted password vault with login-field detection.",
   "action": {
     "default_title": "PassVault",
     "default_popup": "index.html"
   },
   "background": { "service_worker": "background.js", "type": "module" },
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab"],
   "host_permissions": [],
-  "content_scripts": []
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["password-field-detector.js"],
+      "run_at": "document_idle"
+    }
+  ]
 }
