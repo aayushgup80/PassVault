@@ -4,6 +4,7 @@ import { createVault, unlockVault } from "../crypto/vault.js";
 import { clearSession } from "../crypto/session.js";
 import { encryptRecord, decryptRecord } from "../crypto/records.js";
 import { getVaultMetadata, listCredentialRecords, putCredentialRecord, deleteCredentialRecord } from "../database/repository.js";
+import { canonicalOrigin } from "../security/domain.js";
 
 export default function App() {
   const [view, setView] = useState("loading");
@@ -87,10 +88,16 @@ export default function App() {
   async function saveCredential(event) {
     event.preventDefault();
     setMessage("");
-    if (!site.trim() || !secret) return setMessage("Website/account name and password are required.");
+    if (!site.trim() || !username.trim() || !secret) return setMessage("Website, username/email, and password are all required.");
+    let normalizedSite;
+    try { normalizedSite = canonicalOrigin(/^https?:\\/\\//i.test(site.trim()) ? site.trim() : "https://" + site.trim()); }
+    catch { return setMessage("Enter a valid website address, such as https://github.com."); }
+    if (secret.length < 12) return setMessage("Use at least 12 characters for a saved password.");
+    const variety = [/[a-z]/.test(secret),/[A-Z]/.test(secret),/\\d/.test(secret),/[^A-Za-z0-9]/.test(secret)].filter(Boolean).length;
+    if (variety < 3 && secret.length < 16) return setMessage("Use 16+ characters or include at least three character types.");
     try {
       const id = crypto.randomUUID();
-      const encrypted = await encryptRecord({ site: site.trim(), username: username.trim(), password: secret }, id);
+      const encrypted = await encryptRecord({ site: normalizedSite, username: username.trim(), password: secret }, id);
       await putCredentialRecord(encrypted);
       await refreshCredentials();
       setSite(""); setUsername(""); setSecret(""); setShowForm(false);
@@ -103,6 +110,17 @@ export default function App() {
     if (!window.confirm("Delete this saved account? This cannot be undone.")) return;
     await deleteCredentialRecord(id);
     await refreshCredentials();
+  }
+
+  async function fillCredential(item) {
+    const ext = globalThis.chrome;
+    if (!ext?.tabs || !detected?.origin || item.site !== detected.origin) return;
+    try {
+      const [tab] = await ext.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id || new URL(tab.url).origin !== detected.origin) throw new Error("Origin changed");
+      await ext.tabs.sendMessage(tab.id, { type: "PASSVAULT_FILL_CREDENTIAL", origin: detected.origin, username: item.username, password: item.password });
+      setMessage("Credentials filled. PassVault did not submit the form.");
+    } catch { setMessage("Could not fill this page. Reload it and try again."); }
   }
 
   async function copyPassword(value) {
@@ -155,12 +173,12 @@ export default function App() {
       <div className="section-heading"><div><p className="eyebrow">YOUR COLLECTION</p><h3>Saved accounts</h3></div><button className="primary add-button" onClick={()=>{setMessage("");if(!showForm && detected)setSite(detected.origin);setShowForm(!showForm);}}>{showForm ? <X size={16}/> : <Plus size={16}/>} {showForm ? "Cancel" : "Add account"}</button></div>
       {message && <p className="notice" role="status">{message}</p>}
       {showForm && <form className="credential-form" onSubmit={saveCredential}>
-        <label htmlFor="site">Website or account name</label><input id="site" value={site} onChange={e=>setSite(e.target.value)} placeholder="e.g. GitHub" required />
-        <label htmlFor="username">Username or email</label><input id="username" value={username} onChange={e=>setUsername(e.target.value)} placeholder="you@example.com" />
+        <label htmlFor="site">Website address</label><input id="site" type="url" value={site} onChange={e=>setSite(e.target.value)} placeholder="https://github.com" required />
+        <label htmlFor="username">Username or email</label><input id="username" name="username" autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)} placeholder="you@example.com" required />
         <div className="field-label-row"><label htmlFor="saved-password">Password</label><button type="button" className="generate-button" onClick={generatePassword}><Sparkles size={13}/> Generate strong password</button></div><input id="saved-password" name="password" type="password" autoComplete="new-password" value={secret} onChange={e=>setSecret(e.target.value)} placeholder="Enter password" required />
         <button className="primary" type="submit">Encrypt and save</button>
       </form>}
-      {credentials.length === 0 && !showForm ? <div className="empty"><div className="icon-orb"><KeyRound/></div><h3>Your vault is ready</h3><p className="muted">Add an account to store its credentials encrypted on this device.</p><button className="primary" onClick={()=>setShowForm(true)}><Plus size={17}/> Add your first password</button></div> : <div className="credential-list">{credentials.map(item => <article className="credential-row" key={item.id}><div className="credential-avatar"><KeyRound size={18}/></div><div className="credential-info"><strong>{item.site}</strong><span>{item.username || "No username"}</span>{visibleIds.includes(item.id) && <code className="revealed-password">{item.password}</code>}</div><div className="credential-actions"><button className="icon-button" title={visibleIds.includes(item.id) ? "Hide password" : "Show password"} onClick={()=>setVisibleIds(ids=>ids.includes(item.id)?ids.filter(x=>x!==item.id):[...ids,item.id])}>{visibleIds.includes(item.id)?<EyeOff size={16}/>:<Eye size={16}/>}</button><button className="icon-button" title="Copy password" onClick={()=>copyPassword(item.password)}><Copy size={16}/></button><button className="icon-button danger" title="Delete account" onClick={()=>removeCredential(item.id)}><Trash2 size={16}/></button></div></article>)}</div>}
+      {credentials.length === 0 && !showForm ? <div className="empty"><div className="icon-orb"><KeyRound/></div><h3>Your vault is ready</h3><p className="muted">Add an account to store its credentials encrypted on this device.</p><button className="primary" onClick={()=>setShowForm(true)}><Plus size={17}/> Add your first password</button></div> : <div className="credential-list">{credentials.map(item => <article className="credential-row" key={item.id}><div className="credential-avatar"><KeyRound size={18}/></div><div className="credential-info"><strong>{item.site}</strong><span>{item.username || "No username"}</span>{visibleIds.includes(item.id) && <code className="revealed-password">{item.password}</code>}</div><div className="credential-actions"><button className="icon-button" title={visibleIds.includes(item.id) ? "Hide password" : "Show password"} onClick={()=>setVisibleIds(ids=>ids.includes(item.id)?ids.filter(x=>x!==item.id):[...ids,item.id])}>{visibleIds.includes(item.id)?<EyeOff size={16}/>:<Eye size={16}/>}</button>{detected?.origin === item.site && <button className="icon-button fill-button" title="Fill on this website" onClick={()=>fillCredential(item)}><Fingerprint size={16}/></button>}<button className="icon-button" title="Copy password" onClick={()=>copyPassword(item.password)}><Copy size={16}/></button><button className="icon-button danger" title="Delete account" onClick={()=>removeCredential(item.id)}><Trash2 size={16}/></button></div></article>)}</div>}
     </section>
     <footer><span><LockKeyhole size={13}/> Local-first storage</span><span><Settings size={13}/> Settings soon</span></footer>
   </main>;
