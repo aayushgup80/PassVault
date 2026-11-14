@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { ShieldCheck, LockKeyhole, Sparkles, Plus, KeyRound, Settings, Fingerprint, Copy, Trash2, X, Eye, EyeOff } from "lucide-react";
+import { ShieldCheck, LockKeyhole, Sparkles, Plus, KeyRound, Settings, Fingerprint, Copy, Trash2, X, Eye, EyeOff, Download, Upload } from "lucide-react";
 import { createVault, unlockVault } from "../crypto/vault.js";
 import { clearSession } from "../crypto/session.js";
 import { encryptRecord, decryptRecord } from "../crypto/records.js";
-import { getVaultMetadata, listCredentialRecords, putCredentialRecord, deleteCredentialRecord } from "../database/repository.js";
+import { getVaultMetadata, listCredentialRecords, putCredentialRecord, deleteCredentialRecord, replaceVaultSnapshot } from "../database/repository.js";
 import { canonicalOrigin } from "../security/domain.js";
 
 export default function App() {
@@ -118,9 +118,38 @@ export default function App() {
     try {
       const [tab] = await ext.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id || new URL(tab.url).origin !== detected.origin) throw new Error("Origin changed");
-      await ext.tabs.sendMessage(tab.id, { type: "PASSVAULT_FILL_CREDENTIAL", origin: detected.origin, username: item.username, password: item.password });
+      const result = await ext.tabs.sendMessage(tab.id, { type: "PASSVAULT_FILL_CREDENTIAL", origin: detected.origin, username: item.username, password: item.password });
+      if (!result?.ok) throw new Error("No compatible login fields found.");
       setMessage("Credentials filled. PassVault did not submit the form.");
     } catch { setMessage("Could not fill this page. Reload it and try again."); }
+  }
+
+  async function exportEncryptedBackup() {
+    try {
+      const metadata = await getVaultMetadata();
+      const records = await listCredentialRecords();
+      if (!metadata) throw new Error("No vault is available to export.");
+      const backup = { format: "passvault-encrypted-backup", version: 1, exportedAt: new Date().toISOString(), metadata, credentials: records };
+      const blob = new Blob([JSON.stringify(backup)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a"); link.href = url; link.download = "passvault-encrypted-backup.json"; link.click();
+      URL.revokeObjectURL(url);
+      setMessage("Encrypted backup exported. Keep this file private.");
+    } catch (error) { setMessage(error.message || "Could not export backup."); }
+  }
+
+  async function importEncryptedBackup(event) {
+    const file = event.target.files?.[0]; if (!file) return;
+    try {
+      const backup = JSON.parse(await file.text());
+      if (backup?.format !== "passvault-encrypted-backup" || backup.version !== 1 || backup.metadata?.id !== "main" || !Array.isArray(backup.credentials)) throw new Error("This is not a valid PassVault encrypted backup.");
+      if (backup.credentials.some(row => !row?.id || typeof row.nonce !== "string" || typeof row.ciphertext !== "string" || Object.hasOwn(row, "password") || Object.hasOwn(row, "username"))) throw new Error("Backup contains invalid or unencrypted credential records.");
+      if (await getVaultMetadata() && !window.confirm("Replace this browser vault with the imported backup? Existing local records will be overwritten.")) return;
+      await replaceVaultSnapshot(backup.metadata, backup.credentials);
+      clearSession(); setCredentials([]); setVisibleIds([]); setView("locked");
+      setMessage("Encrypted backup restored. Unlock it with its original master passphrase.");
+    } catch (error) { setMessage(error.message || "Could not import this backup."); }
+    finally { event.target.value = ""; }
   }
 
   async function copyPassword(value) {
@@ -180,6 +209,7 @@ export default function App() {
       </form>}
       {credentials.length === 0 && !showForm ? <div className="empty"><div className="icon-orb"><KeyRound/></div><h3>Your vault is ready</h3><p className="muted">Add an account to store its credentials encrypted on this device.</p><button className="primary" onClick={()=>setShowForm(true)}><Plus size={17}/> Add your first password</button></div> : <div className="credential-list">{credentials.map(item => <article className="credential-row" key={item.id}><div className="credential-avatar"><KeyRound size={18}/></div><div className="credential-info"><strong>{item.site}</strong><span>{item.username || "No username"}</span>{visibleIds.includes(item.id) && <code className="revealed-password">{item.password}</code>}</div><div className="credential-actions"><button className="icon-button" title={visibleIds.includes(item.id) ? "Hide password" : "Show password"} onClick={()=>setVisibleIds(ids=>ids.includes(item.id)?ids.filter(x=>x!==item.id):[...ids,item.id])}>{visibleIds.includes(item.id)?<EyeOff size={16}/>:<Eye size={16}/>}</button>{detected?.origin === item.site && <button className="icon-button fill-button" title="Fill on this website" onClick={()=>fillCredential(item)}><Fingerprint size={16}/></button>}<button className="icon-button" title="Copy password" onClick={()=>copyPassword(item.password)}><Copy size={16}/></button><button className="icon-button danger" title="Delete account" onClick={()=>removeCredential(item.id)}><Trash2 size={16}/></button></div></article>)}</div>}
     </section>
+    <section className="backup-actions"><button className="ghost" onClick={exportEncryptedBackup}><Download size={15}/> Export encrypted backup</button><button className="ghost" onClick={()=>document.getElementById("passvault-backup-file")?.click()}><Upload size={15}/> Import backup</button><input id="passvault-backup-file" type="file" accept="application/json,.json" hidden onChange={importEncryptedBackup}/></section>
     <footer><span><LockKeyhole size={13}/> Local-first storage</span><span><Settings size={13}/> Settings soon</span></footer>
   </main>;
 }

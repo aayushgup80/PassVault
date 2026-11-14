@@ -86,3 +86,5 @@ footer span{display:flex;align-items:center;gap:6px}
 .generate-button:hover{color:#c4fff5}
 
 .fill-button{color:#73dfd1!important;background:#173b36!important}
+
+.backup-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}.backup-actions .ghost{margin:0;flex:1;justify-content:center;font-size:11px;padding:10px 8px}

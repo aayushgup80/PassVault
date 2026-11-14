@@ -20,7 +20,7 @@ npm run build
 Load the generated `dist` directory at `chrome://extensions` with Developer mode enabled.
 
 ## Companion website
-Run `npm run dev -- --host 127.0.0.1` and open `/website.html`. It uses the same interface and cryptographic code, but browser-origin storage is separate from the Chrome extension's storage. Cross-device/extension-to-web sync is not implemented yet; do not assume the vaults share records.
+Run `npm run dev -- --host 127.0.0.1` and open `/website.html`. It uses the same interface and cryptographic code, but browser-origin storage is separate from the Chrome extension's storage. Automatic sync is not implemented. Use **Export encrypted backup** in one environment and **Import backup** in the other to transfer the encrypted vault; the receiving environment still requires the original master passphrase.
 
 ## Security status
 This is a development prototype, not an independently audited password manager. Back up important credentials elsewhere until encrypted backup/restore and a security review are complete. Keep NVIDIA API keys in Supabase Edge Function secrets only; never place them in extension source or a VITE_ variable.
