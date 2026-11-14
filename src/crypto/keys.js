@@ -1,5 +1,3 @@
-import { argon2id } from "hash-wasm";
-
 const encoder = new TextEncoder();
 
 export function randomBytes(length) {
@@ -19,6 +17,7 @@ export async function deriveKek(passphrase, salt) {
     throw new Error("Master passphrase must contain at least 14 characters.");
   }
 
+  const { argon2id } = await import("hash-wasm");
   const rawKey = await argon2id({
     password: passphrase,
     salt,

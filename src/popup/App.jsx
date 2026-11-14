@@ -90,10 +90,10 @@ export default function App() {
     setMessage("");
     if (!site.trim() || !username.trim() || !secret) return setMessage("Website, username/email, and password are all required.");
     let normalizedSite;
-    try { normalizedSite = canonicalOrigin(/^https?:\\/\\//i.test(site.trim()) ? site.trim() : "https://" + site.trim()); }
+    try { normalizedSite = canonicalOrigin(/^https?:\/\//i.test(site.trim()) ? site.trim() : "https://" + site.trim()); }
     catch { return setMessage("Enter a valid website address, such as https://github.com."); }
     if (secret.length < 12) return setMessage("Use at least 12 characters for a saved password.");
-    const variety = [/[a-z]/.test(secret),/[A-Z]/.test(secret),/\\d/.test(secret),/[^A-Za-z0-9]/.test(secret)].filter(Boolean).length;
+    const variety = [/[a-z]/.test(secret),/[A-Z]/.test(secret),/\d/.test(secret),/[^A-Za-z0-9]/.test(secret)].filter(Boolean).length;
     if (variety < 3 && secret.length < 16) return setMessage("Use 16+ characters or include at least three character types.");
     try {
       const id = crypto.randomUUID();

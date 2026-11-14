@@ -6,7 +6,8 @@
   (document.head || document.documentElement).append(style);
   function visible(field){if(!(field instanceof HTMLInputElement)||field.disabled||field.type!=="password")return false;const r=field.getBoundingClientRect(),s=getComputedStyle(field);return r.width>0&&r.height>0&&s.display!=="none"&&s.visibility!=="hidden";}
   function attach(field){if(!visible(field)||field.dataset.passvaultBound==="1")return;field.dataset.passvaultBound="1";const button=document.createElement("button");button.type="button";button.className=buttonClass;button.textContent="P";button.title="Open PassVault";button.setAttribute("aria-label","Open PassVault for this login");button.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();try{chrome.runtime.sendMessage({type:"PASSVAULT_OPEN_POPUP"},()=>void chrome.runtime.lastError);}catch{}});const position=()=>{const r=field.getBoundingClientRect();button.style.left=(window.scrollX+r.right-29)+"px";button.style.top=(window.scrollY+r.top+Math.max(0,(r.height-25)/2))+"px";};position();window.addEventListener("scroll",position,{passive:true});window.addEventListener("resize",position,{passive:true});(document.body||document.documentElement).append(button);}
-  function scan(){document.querySelectorAll('input[type="password"]').forEach(attach);}
+  let lastCount=-1;
+  function scan(){const fields=[...document.querySelectorAll('input[type="password"]')].filter(visible);fields.forEach(attach);if(fields.length!==lastCount){lastCount=fields.length;try{chrome.runtime.sendMessage({type:"PASSVAULT_PASSWORD_FIELDS_DETECTED",count:fields.length},()=>void chrome.runtime.lastError);}catch{}}}
   chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
     if(message?.type!=="PASSVAULT_FILL_CREDENTIAL")return;
     if(message.origin!==location.origin){sendResponse({ok:false});return;}

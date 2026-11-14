@@ -8,6 +8,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
   const tabId=sender.tab?.id, senderUrl=sender.tab?.url;
   if(!Number.isInteger(tabId)||typeof senderUrl!=="string")return;
   let origin;try{const parsed=new URL(senderUrl);if(parsed.protocol!=="https:"&&parsed.protocol!=="http:")return;origin=parsed.origin;}catch{return;}
-  const count=Number.isInteger(message.count)?Math.max(1,Math.min(message.count,50)):1;
+  const count=Number.isInteger(message.count)?Math.max(0,Math.min(message.count,50)):1;
+  if(count===0){chrome.storage.session.set({lastPasswordFieldDetection:null});return;}
   chrome.storage.session.set({lastPasswordFieldDetection:{origin,count,tabId,detectedAt:Date.now()}});
 });
